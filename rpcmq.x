@@ -1,38 +1,34 @@
 
-enum mqstat {
+enum mqstatus {
   MQ_OK,
   MQ_NOTFOUND = 1,
   MQ_ERROR = 2
 };
 
-union mq_res switch(mqstat stat) {
+union mq_res switch(mqstatus stat) {
   case MQ_OK: unsigned int handle;
   default: void;
 };
 
-struct mqstat {
-  unsigned int id;
+struct mqinfo {
+  unsigned int handle;
   string name<>;
+  unsigned int id;
 };
 
-union stat_res switch(mqstat stat) {
-  case MQ_OK: mqstat stat;
+union stat_res switch(mqstatus stat) {
+  case MQ_OK: mqinfo info;
   default: void;
 };
 
-struct mqinfo {
-  string name<>;
-  unsigned int handle;
-};
-
-struct postinfo {
+struct postinfo {  
   unsigned int handle;
   opaque data<>;
 };
 
 typedef string mqopen_arg<>;
 
-typedef mqdump_res mqinfo<>;
+typedef mqinfo mqdump_res<>;
 
 program MQPROG {
   version MQV1 {
