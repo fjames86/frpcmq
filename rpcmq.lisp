@@ -114,10 +114,13 @@ If a queue with that name already exists it returns that queue, otherwise alloca
   (setf *mqlist*
         (remove q *mqlist*)))
 
-(defun get-message (q &optional (block t))
+(defun get-message (q &optional return-immediately timeout)
   "Receive a message from the queue. 
 Q ::= a message queue returned from a previous call to CREATE-QUEUE.
-BLOCK ::= if true, will block until a message is received. If false, will return immediately with value nil if no messages are available.
+
+RETURN-IMMEDIATELY ::= if true, will will return immediately with value nil if no messages are available. Otherwise will block until a message arrives.
+
+TIMEOUT ::= time to wait in seconds for a message. If the timeout expires returns nil.
 
 Returns (values data id)."
   (declare (type mq q))
@@ -126,12 +129,15 @@ Returns (values data id)."
       (cond
         (m
          (values (message-data m) (message-id m)))
-        ((not block)
+        (return-immediately 
          ;; if we don't want to block then ensure there are messages, otherwise return immediately 
          nil)
         (t 
          ;; block until the condition varaible is signalled
-         (bt:condition-wait (mq-condv q) (mq-lock q))
+         (if timeout
+	     (handler-case (bt:with-timeout (timeout) (bt:condition-wait (mq-condv q) (mq-lock q)))
+	       (bt:timeout () (return-from get-message nil)))
+	     (bt:condition-wait (mq-condv q) (mq-lock q)))
          (let ((m (dequeue (mq-messages q))))
            (values (message-data m) (message-id m))))))))
 
