@@ -133,7 +133,8 @@ If a queue with that name already exists it returns that queue, otherwise alloca
   "Receive a message from the queue. 
 Q ::= a message queue returned from a previous call to CREATE-QUEUE.
 
-RETURN-IMMEDIATELY ::= if true, will will return immediately with value nil if no messages are available. Otherwise will block until a message arrives.
+RETURN-IMMEDIATELY ::= if true, will will return immediately with value 
+nil if no messages are available. Otherwise will block until a message arrives.
 
 TIMEOUT ::= time to wait in seconds for a message. If the timeout expires returns nil.
 
