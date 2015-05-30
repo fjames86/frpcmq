@@ -29,7 +29,10 @@
 
            #:get-message
            #:create-queue
-           #:delete-queue))
+           #:delete-queue
+
+	   #:rpcmq-error
+	   #:queue-not-found-error))
 
 (in-package #:frpcmq)
 
@@ -40,6 +43,18 @@
   (:ok 0)
   (:notfound 1)
   (:error 2))
+
+(define-condition rpcmq-error (error)
+  ()
+  (:report (lambda (c stream) 
+	     (declare (ignore c))
+	     (format stream "RPCMQ-ERROR"))))
+
+(define-condition queue-not-found-error (rpcmq-error)
+  ()
+  (:report (lambda (c stream) 
+	     (declare (ignore c))
+	     (format stream "RPCMQ queue not found"))))
 
 ;; ------------------------------
 
@@ -158,7 +173,10 @@ Returns (values data id)."
   (:arg-transformer (name)
                     name)
   (:transformer (res)
-                (values (xunion-val res) (xunion-tag res)))
+    (case (xunion-tag res)
+      (:ok (xunion-val res))
+      (:notfound (error 'queue-not-found-error))
+      (t (error 'rmcpq-error))))
   (:program rpcmq 1)
   (:handler #'handle-open)
   (:documentation "Open a handle to the remote message queue. 
@@ -190,7 +208,11 @@ Returns a handle to use in subsequent calls."))
           (:ok :uint32)
           (otherwise :void))
   (:arg-transformer (handle data) (list handle data))
-  (:transformer (res) (xunion-val res))
+  (:transformer (res) 
+    (case (xunion-tag res)
+      (:ok (xunion-val res))
+      (:notfound (error 'queue-not-found-error))
+      (t (error 'rmcpq-error))))
   (:program rpcmq 1)
   (:handler #'handle-post)
   (:documentation "Post a message to the remote message queue."))
@@ -213,7 +235,10 @@ Returns a handle to use in subsequent calls."))
   (:program rpcmq 1)
   (:arg-transformer (handle) handle)
   (:transformer (res)
-                (values (xunion-val res) (xunion-tag res)))
+    (case (xunion-tag res)
+      (:ok (xunion-val res))
+      (:notfound (error 'queue-not-found-error))
+      (t (error 'rmcpq-error))))
   (:handler #'handle-stat)
   (:documentation "Get information on the remote message queue."))
 
