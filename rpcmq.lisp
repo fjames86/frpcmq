@@ -223,14 +223,17 @@ Returns a handle to use in subsequent calls."))
   (let ((q (find-queue handle)))
     (if q
         (make-xunion :ok
-                     (list :id (mq-id q)
-                           :name (mq-name q)))
+                     (list :handle (mq-handle q)
+                           :name (mq-name q)
+                           :id (mq-id q)))
         (make-xunion :notfound nil))))
+
+(defxtype* mqinfo () (:plist :handle :uint32 :name :string :id :uint32))
 
 (defrpc call-stat 3
   :uint32 
   (:union mqstat
-          (:ok (:plist :id :uint32 :name :string))
+          (:ok mqinfo)
           (:otherwise :void))
   (:program rpcmq 1)
   (:arg-transformer (handle) handle)
@@ -247,13 +250,14 @@ Returns a handle to use in subsequent calls."))
 (defun handle-dump (void)
   (declare (ignore void))
   (mapcar (lambda (q)
-            (list :name (mq-name q)
-                  :handle (mq-handle q)))
+            (list :handle (mq-handle q)
+                  :name (mq-name q)
+                  :id (mq-id q)))
           *mqlist*))
 
 (defrpc call-dump 4
   :void
-  (:varray (:plist :name :string :handle :uint32))
+  (:varray mqinfo)
   (:documentation "List all available message queues.")
   (:handler #'handle-dump)
   (:program rpcmq 1))
