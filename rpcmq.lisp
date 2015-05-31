@@ -63,8 +63,8 @@
   nil)
 
 (defrpc call-null 0 :void :void
-        (:program rpcmq 1)
-        (:handler #'handle-null))
+  (:program rpcmq 1)
+  (:handler #'handle-null))
 
 ;; ----------------------------
 
