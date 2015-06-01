@@ -22,39 +22,23 @@
 (defpackage #:frpcmq 
   (:use #:cl #:frpc)
   (:export #:call-null
-           #:call-open
            #:call-post
-           #:call-stat
            #:call-dump
 
+	   ;; server
            #:get-message
            #:create-queue
            #:delete-queue
 
-	   #:rpcmq-error
-	   #:queue-not-found-error))
+	   ;; client
+	   #:open-queue
+	   #:close-queue
+	   #:post-message))
 
 (in-package #:frpcmq)
 
 ;; a random program number I generated
 (defprogram rpcmq #x2666385D)
-
-(defxenum mqstat 
-  (:ok 0)
-  (:notfound 1)
-  (:error 2))
-
-(define-condition rpcmq-error (error)
-  ()
-  (:report (lambda (c stream) 
-	     (declare (ignore c))
-	     (format stream "RPCMQ-ERROR"))))
-
-(define-condition queue-not-found-error (rpcmq-error)
-  ()
-  (:report (lambda (c stream) 
-	     (declare (ignore c))
-	     (format stream "RPCMQ queue not found"))))
 
 ;; ------------------------------
 
@@ -90,35 +74,27 @@
   id data)
 
 (defstruct mq 
-  name handle id messages 
+  handle seqno
+  messages 
   lock condv)
 
 (defvar *mqlist* nil
   "List of message queues.")
 
-(defun find-queue (name-or-handle)
-  (etypecase name-or-handle 
-    (string (find name-or-handle *mqlist* 
-                  :key #'mq-name 
-                  :test #'string-equal))
-    (integer (find name-or-handle *mqlist*
-                   :key #'mq-handle
-                   :test #'=))))
+(defun find-queue (handle)
+  (find handle *mqlist*
+	:key #'mq-handle
+	:test #'=))
 
-(defun create-queue (name)
-  "Create a new message queue.
-NAME ::= name to reference the queue.
-
-If a queue with that name already exists it returns that queue, otherwise allocates a new queue."
-  (declare (type string name))
-  (let ((q (find-queue name)))
+(defun create-queue (handle)
+  "Create a new message queue."
+  (let ((q (find-queue handle)))
     (when q 
       (return-from create-queue q)))
-  (let ((q (make-mq :handle (random (expt 2 32))
-                    :id 0
+  (let ((q (make-mq :handle handle
+                    :seqno 0
                     :lock (bt:make-lock)
                     :condv (bt:make-condition-variable)
-                    :name name
                     :messages (make-queue))))
     (push q *mqlist*)
     q))
@@ -126,8 +102,7 @@ If a queue with that name already exists it returns that queue, otherwise alloca
 (defun delete-queue (q)
   "Delete the queue."
   (declare (type mq q))
-  (setf *mqlist*
-        (remove q *mqlist*)))
+  (setf *mqlist* (remove q *mqlist*)))
 
 (defun get-message (q &optional return-immediately timeout)
   "Receive a message from the queue. 
@@ -146,7 +121,7 @@ Returns (values data id)."
         (m
          (values (message-data m) (message-id m)))
         (return-immediately 
-         ;; if we don't want to block then ensure there are messages, otherwise return immediately 
+         ;; we don't want to block, return immediately 
          nil)
         (t 
          ;; block until the condition varaible is signalled
@@ -159,106 +134,67 @@ Returns (values data id)."
 
 ;; ------------------------------------
 
-
-(defun handle-open (name)
-  (let ((q (find-queue name)))
-    (if q 
-        (make-xunion :ok (mq-handle q))
-        (make-xunion :notfound nil))))
-
-(defrpc call-open 1 
-  :string
-  (:union mqstat
-          (:ok :uint32)
-          (otherwise :void))
-  (:arg-transformer (name)
-                    name)
-  (:transformer (res)
-    (case (xunion-tag res)
-      (:ok (xunion-val res))
-      (:notfound (error 'queue-not-found-error))
-      (t (error 'rmcpq-error))))
-  (:program rpcmq 1)
-  (:handler #'handle-open)
-  (:documentation "Open a handle to the remote message queue. 
-NAME ::= name of the message queue. 
-
-Returns a handle to use in subsequent calls."))
-
-;; -----------------------------
-
 (defun handle-post (arg)
-  (destructuring-bind (handle data) arg
+  (destructuring-bind (handle id data) arg
     (let ((q (find-queue handle)))
-      (cond
-        (q 
-         (bt:with-lock-held ((mq-lock q))
-           (incf (mq-id q))
-           (enqueue (make-message :id (mq-id q) :data data)
-                    (mq-messages q)))
-         ;; signal the condition variable 
-         (bt:condition-notify (mq-condv q))
-         ;; return the id 
-         (make-xunion :ok (mq-id q)))
-        (t 
-         (make-xunion :notfound nil))))))
+      (when q 
+	(bt:with-lock-held ((mq-lock q))
+	  (incf (mq-seqno q))
+	  (enqueue (make-message :id id :data data)
+		   (mq-messages q)))
+	;; signal the condition variable 
+	(bt:condition-notify (mq-condv q))))
+    (error "Be silent")))
 
-(defrpc call-post 2
-  (:list :uint32 (:varray* :octet))
-  (:union mqstat
-          (:ok :uint32)
-          (otherwise :void))
-  (:arg-transformer (handle data) (list handle data))
-  (:transformer (res) 
-    (case (xunion-tag res)
-      (:ok (xunion-val res))
-      (:notfound (error 'queue-not-found-error))
-      (t (error 'rmcpq-error))))
+(defrpc call-post 1
+  (:list :uint32 :uint32 (:varray* :octet)) ;; handle id data
+  :void
+  (:arg-transformer (handle id data) 
+    (list handle id data))
   (:program rpcmq 1)
   (:handler #'handle-post)
   (:documentation "Post a message to the remote message queue."))
 
-;; -------------------------------
+(defstruct client-queue 
+  conn handle id)
 
-(defun handle-stat (handle)
-  (let ((q (find-queue handle)))
-    (if q
-        (make-xunion :ok
-                     (list :handle (mq-handle q)
-                           :name (mq-name q)
-                           :id (mq-id q)))
-        (make-xunion :notfound nil))))
+(defun open-queue (host handle)
+  "Open a remote queue. Returns a client to be used to send messages."
+  (declare (type integer handle))
+  (let ((port (frpc.bind:call-get-port (program-id 'rpcmq) 1 
+				       :host host)))
+    (when (zerop port) (error "No port binding"))
+    (let ((conn (rpc-connect host port)))
+      (make-client-queue :conn conn
+			 :id 0
+			 :handle handle))))
 
-(defxtype* mqinfo () (:plist :handle :uint32 :name :string :id :uint32))
+(defun close-queue (q)
+  (declare (type client-queue q))
+  (rpc-close (client-queue-conn q)))
 
-(defrpc call-stat 3
-  :uint32 
-  (:union mqstat
-          (:ok mqinfo)
-          (:otherwise :void))
-  (:program rpcmq 1)
-  (:arg-transformer (handle) handle)
-  (:transformer (res)
-    (case (xunion-tag res)
-      (:ok (xunion-val res))
-      (:notfound (error 'queue-not-found-error))
-      (t (error 'rmcpq-error))))
-  (:handler #'handle-stat)
-  (:documentation "Get information on the remote message queue."))
-
+(defun post-message (client data)
+  "Post a message to the queue. Returns immediately, the server does not acknowledge receipt of the message."
+  (declare (type client-queue client))
+  (incf (client-queue-id client))
+  (call-post (client-queue-handle client)
+	     (client-queue-id client)   
+	     data
+	     :connection (client-queue-conn client)
+	     :timeout nil))
+	     
 ;; ----------------------------
 
 (defun handle-dump (void)
   (declare (ignore void))
   (mapcar (lambda (q)
             (list :handle (mq-handle q)
-                  :name (mq-name q)
-                  :id (mq-id q)))
+                  :seqno (mq-seqno q)))
           *mqlist*))
 
-(defrpc call-dump 4
+(defrpc call-dump 2
   :void
-  (:varray mqinfo)
+  (:varray (:plist :handle :uint32 :seqno :uint32))
   (:documentation "List all available message queues.")
   (:handler #'handle-dump)
   (:program rpcmq 1))
