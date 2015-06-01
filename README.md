@@ -7,15 +7,14 @@ Provides a simple asynchronous message queue type semantics using rpc. Mainly a 
 
 ```
 ;; on the server, create the queue
-CL-USER> (defparameter *q* (frpcmq:create-queue "myqueue"))
+CL-USER> (defparameter *q* (frpcmq:create-queue 123123))
 ;; block until a message arrives
 CL-USER> (frpcmq:get-message *q*)
 
 ;; on the client, get a handle to the remote queue 
-CL-USER> (defparameter *handle* (frpcmq:call-open "myqueue"))
-;; send a message
-CL-USER> (frpcmq:call-post *handle* #(1 2 3 4))
-1
+CL-USER> (defparameter *c* (frpcmq:open-queue "localhost" 123123))
+;; post a message to the queue. returns immediately, does not guarantee that the server received the message
+CL-USER> (frpcmq:post-message *c* #(1 2 3 4))
 
 ;; the server now receives the message
 CL-USER> (frcpmq:get-message *q*)
@@ -42,8 +41,8 @@ CL-USER> (do ((start (get-universal-time))
 Compile the xfile using rpcgen to create a skeleton program for use with the C programming language:
 
 ```
-$ rpcgen -a rpcmq.x
-$ make -f Makefile.rpcmq
+$ rpcgen -a mq.x
+$ make -f Makefile.mq
 ```
 
 You can use this as a starting point to call to Lisp from C. 
