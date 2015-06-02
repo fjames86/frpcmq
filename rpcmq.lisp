@@ -196,7 +196,7 @@ Returns the ID of the message sent to the queue."
     (incf (client-queue-id queue))
     (setf id (client-queue-id queue)))
   (call-post (client-queue-handle queue)
-	     (client-queue-id queue)   
+	     id
 	     data
 	     :connection (client-queue-conn queue)
 	     :timeout nil)
