@@ -5,6 +5,11 @@ Provides a simple asynchronous message queue type semantics using rpc. Mainly a 
 
 ## 1. Usage
 
+It should be used in a client/server manner. The server creates the queue and then waits for messages to arrive. The client
+opens the remote queue and sends messages to it. There is no guarantee of delivery.
+
+### 1.1 Example
+
 ```
 ;; on the server, create the queue
 CL-USER> (defparameter *q* (frpcmq:create-queue 123123))
@@ -35,6 +40,16 @@ CL-USER> (do ((start (get-universal-time))
              (if data 
                 (format t "~D ~S~%" id data)
                 (sleep 1))))
+```
+
+### 1.2 Discovery
+You may use `DISCOVER-QUEUES` function to discover frpcmq services on your network. This function
+broadcasts to the portmap CALLIT function. The function returns a list of (host port queues) for 
+each discovered host.
+
+```
+CL-USER> (discover-queues)
+((#(10 1 1 1) 47831 ((:handle 123321 :seqno 32))) (#(10 1 2 4) 56482 ((:handle 123321 :seqno 22))))
 ```
 
 ## 2. Other languages

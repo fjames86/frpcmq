@@ -25,15 +25,16 @@
            #:call-post
            #:call-dump
 
-	   ;; server
+           ;; server
            #:get-message
            #:create-queue
            #:delete-queue
-
-	   ;; client
-	   #:open-queue
-	   #:close-queue
-	   #:post-message))
+           
+           ;; client
+           #:open-queue
+           #:close-queue
+           #:post-message
+           #:discover-queues))
 
 (in-package #:frpcmq)
 
@@ -217,4 +218,17 @@ Returns the ID of the message sent to the queue."
   (:handler #'handle-dump)
   (:program rpcmq 1))
 
+
+;; ------------------------------
+
+(defun discover-queues ()
+  "Broadcast a discovery message to the local network to 
+discover available frpcmq services. Returns a list of (host port quues)."
+  (let ((hosts (frpc.bind:call-callit (program-id 'rpcmq) 1 2 nil
+                                      :host "255.255.255.255"
+                                      :protocol :broadcast)))
+    (mapcar (lambda (h)
+              (destructuring-bind (host (port buffer)) h
+                  (list host port (unpack #'%read-call-dump-res buffer))))
+            hosts)))
 
