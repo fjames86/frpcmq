@@ -31,6 +31,12 @@ CL-USER> (do (done)
            (sleep 1))
 ```
 
+The server can then delete the queue when it is done with it:
+
+```
+CL-USER> (frpcmq:delete-queue *q*)
+```
+
 #### 1.1.2 Client
 
 The client must first locate the server which hosts the queue they wish to send the message to:
@@ -56,6 +62,11 @@ CL-USER> (frpcmq:post-message *q* #(1 2 3 4 5 6 7) 0)
 ```
 
 Notice that we send all our messages immediately, but the server takes 1 second to process each message.
+
+The client should call `CLOSE-QUEUE` when it is done with it:
+```
+CL-USER> (frpcmq:close-queue *q*)
+```
 
 #### 1.1.3 Non-blocking server
  
