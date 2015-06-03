@@ -172,7 +172,7 @@ HANDLE ::= an integer specifying the queue name.
 
 Returns a queue object."
   (declare (type integer handle))
-  (let ((port (frpc.bind:call-get-port (program-id 'rpcmq) 1 
+  (let ((port (frpc.bind:call-get-port (program-id 'rpcmq) 
 				       :host host)))
     (when (zerop port) (error "No port binding"))
     (let ((conn (rpc-connect host port)))
